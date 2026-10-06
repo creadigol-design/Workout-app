@@ -5,29 +5,55 @@
   let ctx = null;
   let enabled = true;
 
+  // iOS: play through the speaker even with the silent switch on (Safari 16.4+).
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* unsupported */ }
+
   function ac() {
     if (!ctx) {
       const AC = root.AudioContext || root.webkitAudioContext;
       if (!AC) return null;
       try { ctx = new AC(); } catch (e) { return null; }
     }
-    if (ctx.state === 'suspended') ctx.resume();
     return ctx;
   }
 
-  function tone(freq, start, dur, type, vol) {
+  /** Run fn once the context is actually running (iOS leaves it suspended/interrupted until a touch). */
+  function whenRunning(fn) {
     const c = ac();
     if (!c) return;
-    const o = c.createOscillator();
-    const g = c.createGain();
-    o.type = type || 'square';
-    o.frequency.setValueAtTime(freq, c.currentTime + start);
-    g.gain.setValueAtTime(0.0001, c.currentTime + start);
-    g.gain.exponentialRampToValueAtTime(vol || 0.06, c.currentTime + start + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + start + dur);
-    o.connect(g); g.connect(c.destination);
-    o.start(c.currentTime + start);
-    o.stop(c.currentTime + start + dur + 0.02);
+    if (c.state === 'running') { fn(c); return; }
+    const p = c.resume();
+    if (p && p.then) p.then(() => { if (c.state === 'running') fn(c); }).catch(() => {});
+  }
+
+  // Home-screen apps start suspended and get interrupted after backgrounding, so re-unlock on every touch.
+  function unlock() {
+    const c = ac();
+    if (!c) return;
+    if (c.state !== 'running') c.resume().catch(() => {});
+    try {
+      const src = c.createBufferSource();
+      src.buffer = c.createBuffer(1, 1, 22050);
+      src.connect(c.destination);
+      src.start(0);
+    } catch (e) { /* ignore */ }
+  }
+  ['touchstart', 'touchend', 'pointerdown', 'click', 'keydown'].forEach((ev) => document.addEventListener(ev, unlock, { passive: true, capture: true }));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); });
+
+  function tone(freq, start, dur, type, vol) {
+    whenRunning((c) => {
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.type = type || 'square';
+      o.frequency.setValueAtTime(freq, c.currentTime + start);
+      g.gain.setValueAtTime(0.0001, c.currentTime + start);
+      g.gain.exponentialRampToValueAtTime(vol || 0.08, c.currentTime + start + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + start + dur);
+      o.connect(g); g.connect(c.destination);
+      o.start(c.currentTime + start);
+      o.stop(c.currentTime + start + dur + 0.02);
+    });
   }
 
   const seq = (notes, step, dur, type) => notes.forEach((n, i) => n && tone(n, i * step, dur, type));

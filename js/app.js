@@ -173,7 +173,7 @@
     keepAwake();
     FW.sfx('coin');
     render();
-    window.scrollTo(0, 0);
+    $('#scroller').scrollTop = 0;
   }
 
   async function keepAwake() {
@@ -398,7 +398,7 @@
     ui.tab = 'home';
     FW.sfx(after > before ? 'level' : 'ko');
     render();
-    window.scrollTo(0, 0);
+    $('#scroller').scrollTop = 0;
   }
 
   function abandon(skipConfirm) {
@@ -714,7 +714,7 @@
 
   // ---------- render ----------
   function render(keepScroll) {
-    const y = window.scrollY;
+    const y = $('#scroller').scrollTop;
     document.body.classList.toggle('view-workout', ui.view === 'workout');
     document.body.classList.toggle('view-onboard', ui.view === 'onboard');
     FW.sfxEnable(S.settings.sound);
@@ -727,9 +727,9 @@
     else html = ({ home: homeHtml, plan: planHtml, gear: gearHtml, body: bodyHtml, log: logHtml, food: foodHtml })[ui.tab]();
     $('#screen').innerHTML = html;
     $('#modal').innerHTML = modalHtml();
-    document.body.style.overflow = ui.ko || ui.viewer || ui.settings || ui.compare || ui.lock ? 'hidden' : '';
+    $('#scroller').style.overflowY = ui.ko || ui.viewer || ui.settings || ui.compare || ui.lock ? 'hidden' : '';
     renderDock();
-    if (keepScroll) window.scrollTo(0, y);
+    if (keepScroll) $('#scroller').scrollTop = y;
     hydratePhotos();
     if (ui.view === 'tabs' && ui.tab === 'log' && ui.logTab === 'chart') drawChart('chart', chartPoints(ui.chartEx), null);
     if (ui.view === 'tabs' && ui.tab === 'body') drawChart('wchart', weighIns().map((x) => ({ t: x.ts, v: x.kg })), S.body.goalKg);
@@ -772,9 +772,9 @@
   }
 
   const ACT = {
-    tab(el) { ui.tab = el.dataset.tab; ui.view = 'tabs'; FW.sfx('tap'); if ((ui.tab === 'log' && ui.logTab === 'photos') || ui.tab === 'body') loadPhotos(); render(); window.scrollTo(0, 0); },
+    tab(el) { ui.tab = el.dataset.tab; ui.view = 'tabs'; FW.sfx('tap'); if ((ui.tab === 'log' && ui.logTab === 'photos') || ui.tab === 'body') loadPhotos(); render(); $('#scroller').scrollTop = 0; },
     start(el) { startWorkout(el.dataset.key); },
-    resume() { ui.view = 'workout'; keepAwake(); render(); window.scrollTo(0, 0); },
+    resume() { ui.view = 'workout'; keepAwake(); render(); $('#scroller').scrollTop = 0; },
     finish() { finishWorkout(); },
     abandon() { abandon(); },
     toggleSet(el) {
@@ -841,7 +841,7 @@
     photo(el) { pendingPhoto = { ei: +el.dataset.ei, si: +el.dataset.si }; $('#photoInput').value = ''; $('#photoInput').click(); },
     restAdd() { if (rest) { rest.end += 30000; rest.total += 30; } },
     restSkip() { rest = null; renderDock(); },
-    koClose() { ui.ko = null; render(); window.scrollTo(0, 0); },
+    koClose() { ui.ko = null; render(); $('#scroller').scrollTop = 0; },
     openSettings() { ui.settings = true; render(true); },
     closeModal() { ui.settings = false; render(true); },
     toggleSound() { S.settings.sound = !S.settings.sound; FW.sfxEnable(S.settings.sound); FW.sfx('coin'); save(); render(true); },
@@ -943,7 +943,7 @@
     sendProofKo() { if (ui.ko) sendMessage(proofMessage(ui.ko.session)); },
     dismissInstall() { S.dismissInstall = true; save(); render(true); },
     onbKnee(el) { ui.onb.knee = el.dataset.v === '1'; render(true); },
-    onbNext() { ui.onbStep = 1; FW.sfx('coin'); render(); window.scrollTo(0, 0); },
+    onbNext() { ui.onbStep = 1; FW.sfx('coin'); render(); $('#scroller').scrollTop = 0; },
     onbDays(el) { ui.onb.days = +el.dataset.d; FW.sfx('tap'); render(true); },
     onbBar(el) { ui.onb.barbell = el.dataset.v === '1'; render(true); },
     onbBarW(el) { ui.onb.bar = +el.dataset.w; render(true); },
@@ -964,7 +964,7 @@
       FW.store.saveNow(S);
       ui.view = 'tabs'; ui.tab = 'home';
       FW.sfx('level');
-      render(); window.scrollTo(0, 0);
+      render(); $('#scroller').scrollTop = 0;
     },
   };
 
