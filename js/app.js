@@ -27,6 +27,7 @@
   const save = () => FW.store.save(S);
   const recaps = () => { caps = FW.capabilities(S.gear); };
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const fmtTime = (ts) => new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   const fmtDate = (ts) => new Date(ts).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
   function toast(msg, kind, ms) {
@@ -267,7 +268,7 @@
       '<div class="stat"><div class="k">TOTAL SETS</div><div class="v">' + totalSetsAllTime() + '</div><div class="s">' + n2(Math.round(totalVolume() / 100) / 10) + ' tonnes lifted</div></div>' +
       bodyStat() +
       '</div><div class="spacer"></div>' +
-      (last ? '<div class="box flat"><h2>LAST FIGHT</h2><div class="row between"><span>' + esc(last.name) + '</span><span class="muted">' + fmtDate(last.endedAt) + '</span></div><div class="muted">' + last.sets + ' sets · ' + mmss((last.endedAt - last.startedAt) / 1000) + ' · +' + last.xp + ' XP</div></div>' : '') +
+      (last ? '<div class="box flat"><h2>LAST FIGHT</h2><div class="row between"><span>' + esc(last.name) + '</span><span class="muted" style="text-align:right">' + fmtDate(last.endedAt) + '<br>' + fmtTime(last.endedAt) + '</span></div><div class="muted">' + last.sets + ' sets · ' + mmss((last.endedAt - last.startedAt) / 1000) + ' · +' + last.xp + ' XP</div></div>' : '') +
       '<button class="box flat block center" style="width:100%;color:inherit" data-act="tab" data-tab="food"><div class="row" style="justify-content:center">' + SP.icon('lock', 3) + '<span class="pix" style="font-size:9px">FOOD TRACKING · COMING IN V2</span></div></button>';
   }
 
@@ -505,7 +506,7 @@
       if (!S.sessions.length) return seg + '<div class="box flat center"><div class="muted">No fights logged yet.<br>Finish your first workout and it lands here.</div></div>';
       return seg + '<div class="hist">' + S.sessions.slice().reverse().map((s) => {
         const open = ui.openHist === s.id;
-        return '<button class="hist-item" data-act="histToggle" data-id="' + s.id + '"><div class="t"><b>' + esc(s.name) + '</b><span class="muted">' + fmtDate(s.endedAt) + '</span></div>' +
+        return '<button class="hist-item" data-act="histToggle" data-id="' + s.id + '"><div class="t"><b>' + esc(s.name) + '</b><span class="muted" style="text-align:right">' + fmtDate(s.endedAt) + ' · ' + fmtTime(s.endedAt) + '</span></div>' +
           '<div class="muted">' + s.sets + ' sets · ' + n2(Math.round(s.vol / 10) / 100) + ' t · ' + mmss((s.endedAt - s.startedAt) / 1000) + ' · +' + s.xp + ' XP</div>' +
           (open ? '<div class="hist-detail">' + s.exercises.map((e) => '<div><div class="e">' + esc(e.name) + '</div><div class="s">' + e.sets.map((x) => (FW.hasLoad(EX[e.exId] || {}) ? n2(x.w) + 'kg×' + x.r : x.r + (e.load === 'time' ? 's' : '')) + (x.pr ? '★' : '')).join('  ') + '</div></div>').join('') + '</div>' : '') +
           '</button>';
