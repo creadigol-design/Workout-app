@@ -10,13 +10,16 @@
       v: 1,
       onboarded: false,
       profile: { name: 'PLAYER 1', goalDays: 3, createdAt: Date.now() },
-      settings: { sound: true, autoRest: true, ramp: true },
+      settings: { sound: true, autoRest: true, ramp: true, knee: true },
       gear: FW.defaultGear(),
       slotPins: {},       // slotKey -> exId the user picked on purpose
       prog: {},           // exId -> progression state
       sessions: [],       // finished workouts
       active: null,       // workout in progress
       xp: 0,
+      body: { entries: [], goalKg: null }, // weigh-ins: {id, ts, kg, waist?}
+      commit: { on: false, days: [1, 3, 5], deadline: '20:00', partnerName: '', partnerPhone: '' },
+      dismissInstall: false,
       food: {},           // reserved for v2 food tracking
     };
   }
@@ -32,6 +35,8 @@
         profile: Object.assign(base.profile, s.profile),
         settings: Object.assign(base.settings, s.settings),
         gear: Object.assign(base.gear, s.gear),
+        body: Object.assign(base.body, s.body),
+        commit: Object.assign(base.commit, s.commit),
       });
     } catch (e) {
       return base;

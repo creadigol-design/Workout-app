@@ -1,5 +1,5 @@
 /* Offline cache: app shell is cache-first, bumped by VERSION. */
-const VERSION = 'roundone-v1';
+const VERSION = 'roundone-v2';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/style.css',
   './js/data.js', './js/engine.js', './js/store.js', './js/audio.js', './js/sprites.js', './js/app.js',

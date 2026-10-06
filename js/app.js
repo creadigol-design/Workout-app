@@ -10,7 +10,8 @@
   let caps = FW.capabilities(S.gear);
   const ui = {
     view: S.onboarded ? 'tabs' : 'onboard', tab: 'home', logTab: 'history', chartEx: null, openHist: null,
-    onbStep: 0, ko: null, cue: {}, settings: false, viewer: null, photos: [], onb: { name: 'PLAYER 1', days: 3, barbell: true, bar: 20, ramp: true },
+    onbStep: 0, ko: null, cue: {}, settings: false, viewer: null, photos: [], pose: 'front', poseView: 'all', compare: null, lock: false,
+    onb: { name: 'PLAYER 1', days: 3, barbell: true, bar: 25, ramp: true, knee: true, kg: '', goal: '' },
   };
   if (S.active) ui.resumeAvailable = true;
   let rest = null;
@@ -51,6 +52,68 @@
     const last = S.sessions[S.sessions.length - 1];
     return !last || last.key === 'B' ? 'A' : 'B';
   };
+
+
+  // ---------- commitment lock ----------
+  const DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
+  const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isStandalone = () => window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+
+  function lockStatus(now) {
+    const c = S.commit;
+    if (!c.on) return null;
+    if (S.sessions.some((s) => sameDay(s.endedAt, now))) return { state: 'clear', title: 'UNLOCKED', msg: 'Workout done. Send proof so your partner can release your phone.' };
+    const d = new Date(now);
+    if (!c.days.includes(d.getDay())) return { state: 'rest', title: 'REST DAY', msg: 'No training scheduled today. Your phone is free.' };
+    const parts = c.deadline.split(':').map(Number);
+    const dl = new Date(d); dl.setHours(parts[0] || 0, parts[1] || 0, 0, 0);
+    if (now >= dl.getTime()) return { state: 'locked', title: 'LOCKED', msg: 'Deadline passed. Train now, then send proof.' };
+    const left = Math.round((dl.getTime() - now) / 60000);
+    return { state: 'pending', title: 'TRAIN BY ' + c.deadline, msg: Math.floor(left / 60) + 'h ' + (left % 60) + 'm until lockdown.' };
+  }
+  function missedThisWeek(now) {
+    const c = S.commit;
+    let miss = 0;
+    const start = FW.weekStart(now);
+    for (let t = start; t < now; t += 86400000) {
+      const d = new Date(t + 43200000);
+      if (sameDay(d.getTime(), now)) break;
+      if (c.days.includes(d.getDay()) && !S.sessions.some((s) => sameDay(s.endedAt, d.getTime()))) miss++;
+    }
+    return miss;
+  }
+  function lockCard() {
+    const st = lockStatus(Date.now());
+    if (!st) return '<button class="box flat block lockcard off" data-act="openLock">' + SP.icon('lock', 3) + '<span class="grow"><span class="pix" style="font-size:9px">PHONE LOCK</span><br><span class="muted">Set up your commitment lock</span></span><span class="pix" style="font-size:9px;color:var(--yellow)">SET UP</span></button>';
+    const miss = missedThisWeek(Date.now());
+    return '<button class="box block lockcard ' + st.state + '" data-act="openLock">' + SP.icon(st.state === 'locked' || st.state === 'pending' ? 'lock' : 'star', 3) +
+      '<span class="grow"><span class="pix" style="font-size:11px">' + st.title + '</span><br><span>' + esc(st.msg) + '</span>' + (miss ? '<br><span class="miss">MISSED THIS WEEK: ' + miss + '</span>' : '') + '</span></button>';
+  }
+  function proofMessage(sess) {
+    const mins = Math.max(1, Math.round((sess.endedAt - sess.startedAt) / 60000));
+    return 'ROUND ONE: K.O.! ' + sess.name + ' done. ' + sess.sets + ' sets, ' + (Math.round(sess.vol / 100) / 10) + 't lifted, ' + mins + ' min (' + new Date(sess.endedAt).toLocaleString() + '). Unlock my phone please.';
+  }
+  function sendMessage(text) {
+    const c = S.commit;
+    if (c.partnerPhone) { window.location.href = 'sms:' + c.partnerPhone.replace(/[^\d+]/g, '') + '&body=' + encodeURIComponent(text); return; }
+    if (navigator.share) { navigator.share({ text }).catch(() => {}); return; }
+    window.location.href = 'sms:&body=' + encodeURIComponent(text);
+  }
+
+  // ---------- body ----------
+  const weighIns = () => S.body.entries.slice().sort((a, b) => a.ts - b.ts);
+  function weightStats() {
+    const e = weighIns();
+    if (!e.length) return null;
+    const first = e[0], last = e[e.length - 1];
+    const wk = e.filter((x) => x.ts >= last.ts - 7 * 86400000);
+    return { first, last, avg: wk.reduce((a, x) => a + x.kg, 0) / wk.length, change: last.kg - first.kg, toGoal: S.body.goalKg ? last.kg - S.body.goalKg : null };
+  }
+  const progressPhotos = () => ui.photos.filter((p) => p.meta && p.meta.kind === 'progress');
+  const setPhotos = () => ui.photos.filter((p) => !(p.meta && p.meta.kind === 'progress'));
+  const sign = (n) => (n > 0 ? '+' : '') + n2(Math.round(n * 10) / 10);
 
   function setCounts(a) {
     let total = 0, done = 0;
@@ -101,7 +164,7 @@
   }
 
   function startWorkout(key) {
-    const list = FW.buildWorkout(key, caps, S.slotPins);
+    const list = FW.buildWorkout(key, caps, S.slotPins, S.settings.knee);
     S.active = { id: uid(), key, name: FW.WORKOUTS[key].name, startedAt: Date.now(), exercises: list.map((s) => makeExercise(s.slotKey, s.exId)) };
     ui.view = 'workout';
     ui.cue = {};
@@ -152,16 +215,28 @@
   }
 
   // ---------- tabs ----------
-  const TABS = [['home', 'FIGHT', 'fist'], ['plan', 'PLAN', 'star'], ['gear', 'GEAR', 'barbell'], ['log', 'LOG', 'trophy'], ['food', 'FOOD', 'lock']];
+  const TABS = [['home', 'FIGHT', 'fist'], ['plan', 'PLAN', 'star'], ['gear', 'GEAR', 'barbell'], ['body', 'BODY', 'heart'], ['log', 'LOG', 'trophy'], ['food', 'FOOD', 'lock']];
   function tabsHtml() {
     return TABS.map((t) => '<button class="tab ' + (ui.tab === t[0] ? 'on' : '') + '" data-act="tab" data-tab="' + t[0] + '">' + SP.icon(t[2], 2) + '<span>' + t[1] + '</span></button>').join('');
+  }
+
+
+  function installHint() {
+    if (!isIOS || isStandalone() || S.dismissInstall) return '';
+    return '<div class="box hot"><h2>INSTALL ON IPHONE</h2><div>Open this page in <b>Safari</b>, tap <b>Share</b>, then <b>Add to Home Screen</b>. It runs full screen, works offline and keeps your data.</div><div class="gap"><button class="btn small ghost" data-act="dismissInstall">GOT IT</button></div></div>';
+  }
+  function bodyStat() {
+    const st = weightStats();
+    return '<button class="stat" style="grid-column:1/-1;text-align:left;color:inherit" data-act="tab" data-tab="body"><div class="k">BODY WEIGHT</div>' +
+      (st ? '<div class="v">' + n2(st.last.kg) + 'kg</div><div class="s">' + sign(st.change) + 'kg since start' + (st.toGoal !== null ? ' · ' + n2(Math.round(Math.abs(st.toGoal) * 10) / 10) + 'kg ' + (st.toGoal > 0 ? 'to goal' : 'past goal') : '') + '</div>' :
+        '<div class="v" style="font-size:12px">NO WEIGH-INS YET</div><div class="s">Tap to log your first weigh-in</div>') + '</button>';
   }
 
   // ---------- HOME ----------
   function homeHtml() {
     const key = nextKey();
     const W = FW.WORKOUTS[key];
-    const list = FW.buildWorkout(key, caps, S.slotPins);
+    const list = FW.buildWorkout(key, caps, S.slotPins, S.settings.knee);
     const lv = FW.levelInfo(S.xp);
     const wk = FW.sessionsThisWeek(S.sessions);
     const goal = S.profile.goalDays;
@@ -184,11 +259,13 @@
       '<div class="gap">' + (resume
         ? '<button class="btn block" data-act="resume">RESUME FIGHT</button><div class="spacer"></div><button class="btn block ghost small" data-act="abandon">DISCARD</button>'
         : '<button class="btn block red blink" data-act="start" data-key="' + key + '">PRESS START</button>') + '</div></div>' +
+      installHint() + lockCard() +
       '<div class="stats">' +
       '<div class="stat"><div class="k">LEVEL</div><div class="v">' + lv.lvl + '</div><div class="s">' + FW.titleFor(lv.lvl) + ' · ' + lv.rem + '/' + lv.need + ' XP</div></div>' +
       '<div class="stat"><div class="k">THIS WEEK</div><div class="v">' + wk + '/' + goal + '</div><div class="hearts">' + hearts + '</div></div>' +
       '<div class="stat"><div class="k">WIN STREAK</div><div class="v">' + SP.icon('flame', 2) + ' ' + streak + '</div><div class="s">weeks on goal</div></div>' +
       '<div class="stat"><div class="k">TOTAL SETS</div><div class="v">' + totalSetsAllTime() + '</div><div class="s">' + n2(Math.round(totalVolume() / 100) / 10) + ' tonnes lifted</div></div>' +
+      bodyStat() +
       '</div><div class="spacer"></div>' +
       (last ? '<div class="box flat"><h2>LAST FIGHT</h2><div class="row between"><span>' + esc(last.name) + '</span><span class="muted">' + fmtDate(last.endedAt) + '</span></div><div class="muted">' + last.sets + ' sets · ' + mmss((last.endedAt - last.startedAt) / 1000) + ' · +' + last.xp + ' XP</div></div>' : '') +
       '<button class="box flat block center" style="width:100%;color:inherit" data-act="tab" data-tab="food"><div class="row" style="justify-content:center">' + SP.icon('lock', 3) + '<span class="pix" style="font-size:9px">FOOD TRACKING · COMING IN V2</span></div></button>';
@@ -222,7 +299,7 @@
     const last = lastText(e.exId);
     const slot = FW.SLOTS[e.slotKey];
     const anyDone = e.sets.some((s) => s.done);
-    const canSwap = !anyDone && FW.slotOptions(e.slotKey, caps).length > 1;
+    const canSwap = !anyDone && FW.slotOptions(e.slotKey, caps, S.settings.knee).length > 1;
     const w0 = e.sets[0] ? e.sets[0].w : 0;
     const setRows = e.sets.map((s, si) => {
       const photos = s.photos || [];
@@ -343,8 +420,8 @@
     const blocks = ['A', 'B'].map((key) => {
       const W = FW.WORKOUTS[key];
       const rows = W.slots.map((slotKey) => {
-        const opts = FW.slotOptions(slotKey, caps);
-        const cur = FW.slotChoice(slotKey, caps, S.slotPins);
+        const opts = FW.slotOptions(slotKey, caps, S.settings.knee);
+        const cur = FW.slotChoice(slotKey, caps, S.slotPins, S.settings.knee);
         if (!cur) return '';
         const t = FW.targetFor(cur, S, Date.now());
         const pinned = S.slotPins[slotKey] && opts.includes(S.slotPins[slotKey]);
@@ -362,7 +439,8 @@
     const lockedHtml = locked.length ? '<div class="box flat locked"><h2>' + SP.icon('lock', 2) + ' LOCKED MOVES</h2>' + locked.map((l) =>
       '<div class="unlock"><span>' + esc(EX[l.id].name) + '</span><span>NEEDS ' + esc(l.miss.map((m) => FW.CAP_LABEL[m] || m).join(' + ')) + '</span></div>').join('') + '</div>' : '';
 
-    return '<h2>YOUR PLAN</h2>' +
+    const kneeBox = '<button class="toggle ' + (S.settings.knee ? 'on' : '') + '" style="margin-bottom:16px" data-act="setting" data-k="knee"><span class="nm">Knee-friendly mode</span><span class="sw">' + (S.settings.knee ? 'ON' : 'OFF') + '</span></button>';
+    return '<h2>YOUR PLAN</h2>' + kneeBox +
       '<div class="box flat"><div class="row between"><span class="pix" style="font-size:9px">FIGHTS PER WEEK</span></div><div class="seg gap">' +
       [2, 3, 4, 5].map((d) => '<button class="chip ' + (S.profile.goalDays === d ? 'on' : '') + '" data-act="setGoal" data-d="' + d + '">' + d + '</button>').join('') + '</div>' +
       '<div class="muted gap">Workouts alternate A → B → A… whenever you train, so a missed day never breaks the plan.</div></div>' +
@@ -397,7 +475,7 @@
     return '<h2>GEAR</h2><div class="muted" style="margin-bottom:12px">Tick what you own. New equipment unlocks new moves and the plan updates itself.</div>' +
       '<div class="box"><h2>' + SP.icon('barbell', 2) + ' BARBELL</h2>' +
       '<button class="toggle ' + (g.barbell.has ? 'on' : '') + '" data-act="barbellToggle"><span class="box-ico">' + SP.icon('barbell', 2) + '</span><span class="nm">Barbell</span><span class="sw">' + (g.barbell.has ? 'OWN' : 'NO') + '</span></button>' +
-      (g.barbell.has ? '<div class="row gap"><span class="grow">Bar weight (kg)</span><div class="seg tight">' + [10, 15, 20].map((w) => '<button class="chip ' + (g.barbell.weight === w ? 'on' : '') + '" data-act="barWeight" data-w="' + w + '">' + w + '</button>').join('') + '</div></div>' +
+      (g.barbell.has ? '<div class="row gap"><span class="grow">Bar weight (kg)</span><div class="seg tight">' + [10, 15, 20, 25].map((w) => '<button class="chip ' + (g.barbell.weight === w ? 'on' : '') + '" data-act="barWeight" data-w="' + w + '">' + w + '</button>').join('') + '</div></div>' +
         '<div class="muted gap">Loadable range ' + n2(loads[0]) + '–' + n2(loads[loads.length - 1]) + 'kg · ' + loads.length + ' weights</div>' : '') +
       '</div>' +
       '<div class="box"><h2>BIG KIT</h2><div class="stack">' + tgl + '</div></div>' +
@@ -434,8 +512,9 @@
       }).join('') + '</div>';
     }
     if (ui.logTab === 'photos') {
-      if (!ui.photos.length) return seg + '<div class="box flat center">' + SP.icon('camera', 4, 'bob') + '<div class="muted">No set photos yet.<br>Tap the camera on any set during a workout.</div></div>';
-      return seg + '<div class="photo-grid">' + ui.photos.map((p) => '<button data-act="viewPhoto" data-id="' + p.id + '"><img alt="" src="' + FW.store.urlFor(p) + '"><span>' + esc((p.meta && p.meta.exName) || '') + '</span></button>').join('') + '</div>';
+      const sp = setPhotos();
+      if (!sp.length) return seg + '<div class="box flat center">' + SP.icon('camera', 4, 'bob') + '<div class="muted">No set photos yet.<br>Tap the camera on any set during a workout.</div></div>';
+      return seg + '<div class="photo-grid">' + sp.map((p) => '<button data-act="viewPhoto" data-id="' + p.id + '"><img alt="" src="' + FW.store.urlFor(p) + '"><span>' + esc((p.meta && p.meta.exName) || '') + '</span></button>').join('') + '</div>';
     }
     // charts
     const ids = [];
@@ -462,10 +541,9 @@
     return pts;
   }
 
-  function drawChart() {
-    const cv = $('#chart');
+  function drawChart(id, pts, goalLine) {
+    const cv = $('#' + id);
     if (!cv) return;
-    const pts = chartPoints(ui.chartEx);
     const x = cv.getContext('2d');
     const W = cv.width, H = cv.height, padL = 6, padR = 6, padT = 10, padB = 10;
     x.fillStyle = '#000'; x.fillRect(0, 0, W, H);
@@ -473,10 +551,12 @@
     for (let i = 0; i <= 4; i++) x.fillRect(padL, Math.round(padT + ((H - padT - padB) * i) / 4), W - padL - padR, 1);
     if (!pts.length) return;
     const vals = pts.map((p) => p.v);
+    if (goalLine) vals.push(goalLine);
     let lo = Math.min(...vals), hi = Math.max(...vals);
     if (lo === hi) { lo = Math.max(0, lo - 1); hi = hi + 1; }
     const px = (i) => (pts.length === 1 ? W / 2 : padL + 3 + ((W - padL - padR - 6) * i) / (pts.length - 1));
     const py = (v) => H - padB - ((v - lo) / (hi - lo)) * (H - padT - padB);
+    if (goalLine) { x.fillStyle = '#4fd37a'; for (let gx = padL; gx < W - padR; gx += 4) x.fillRect(gx, Math.round(py(goalLine)), 2, 1); }
     x.fillStyle = '#e63946';
     for (let i = 1; i < pts.length; i++) {
       const x0 = px(i - 1), y0 = py(pts[i - 1].v), x1 = px(i), y1 = py(pts[i].v);
@@ -490,7 +570,7 @@
   async function loadPhotos() {
     const list = await FW.store.photos.all();
     ui.photos = list.sort((a, b) => b.ts - a.ts);
-    if (ui.tab === 'log' && ui.logTab === 'photos' && ui.view === 'tabs') render(true);
+    if (ui.view === 'tabs' && ((ui.tab === 'log' && ui.logTab === 'photos') || ui.tab === 'body')) render(true);
   }
 
   // ---------- FOOD ----------
@@ -498,6 +578,74 @@
     return '<h2>FOOD</h2><div class="box locked center">' + SP.icon('lock', 6, 'bob') + '<div class="pix" style="font-size:12px;color:var(--yellow);margin:12px 0">COMING IN V2</div>' +
       '<div class="muted">Next up: log meals, snap a photo of your plate, and track calories + protein against your training days.</div></div>' +
       '<div class="box flat"><h2>' + SP.icon('food', 2) + ' ROADMAP</h2><ul class="rules"><li>Quick meal logging with photos</li><li>Daily calorie and protein targets</li><li>Training day vs rest day macros</li><li>Body weight tracking next to your lifts</li></ul></div>';
+  }
+
+
+  // ---------- BODY ----------
+  function bodyHtml() {
+    const st = weightStats();
+    const e = weighIns();
+    const goal = S.body.goalKg;
+    const prog = progressPhotos();
+    const shown = (ui.poseView === 'all' ? prog : prog.filter((p) => p.meta.pose === ui.poseView));
+    const poseChip = (k, label, act, cur) => '<button class="chip ' + (cur === k ? 'on' : '') + '" data-act="' + act + '" data-p="' + k + '">' + label + '</button>';
+    return '<h2>BODY</h2>' +
+      '<div class="box"><h2>' + SP.icon('heart', 2) + ' WEIGH-IN</h2>' +
+      '<div class="row wrap"><div class="grow"><div class="pix" style="font-size:7px;margin-bottom:6px;color:var(--muted)">WEIGHT KG</div><input id="wkg" type="number" inputmode="decimal" step="0.1" placeholder="' + (st ? n2(st.last.kg) : '80.0') + '"></div>' +
+      '<div class="grow"><div class="pix" style="font-size:7px;margin-bottom:6px;color:var(--muted)">WAIST CM (OPT)</div><input id="wwaist" type="number" inputmode="decimal" step="0.1"></div></div>' +
+      '<div class="pix" style="font-size:7px;margin:10px 0 6px;color:var(--muted)">DATE</div><input id="wdate" type="date" value="' + todayStr() + '" max="' + todayStr() + '" style="width:100%;background:#000;border:3px solid var(--line);color:var(--yellow);padding:8px;font-size:22px;font-family:inherit">' +
+      '<div class="gap"><button class="btn block" data-act="saveWeigh">SAVE WEIGH-IN</button></div></div>' +
+      (st ? '<div class="stats"><div class="stat"><div class="k">CURRENT</div><div class="v">' + n2(st.last.kg) + '</div><div class="s">kg · ' + fmtDate(st.last.ts) + '</div></div>' +
+        '<div class="stat"><div class="k">7-DAY AVG</div><div class="v">' + n2(Math.round(st.avg * 10) / 10) + '</div><div class="s">kg</div></div>' +
+        '<div class="stat"><div class="k">CHANGE</div><div class="v">' + sign(st.change) + '</div><div class="s">kg since ' + fmtDate(st.first.ts) + '</div></div>' +
+        '<div class="stat"><div class="k">GOAL</div><div class="v">' + (goal ? n2(goal) : '--') + '</div><div class="s">' + (st.toGoal !== null ? n2(Math.round(Math.abs(st.toGoal) * 10) / 10) + 'kg ' + (st.toGoal > 0 ? 'to go' : 'past it!') : 'set below') + '</div></div></div><div class="spacer"></div>' : '') +
+      (e.length > 1 ? '<div class="box"><h2>TREND</h2><canvas id="wchart" class="chart" width="200" height="110"></canvas></div>' : '') +
+      '<div class="box"><h2>GOAL WEIGHT</h2><div class="add-row"><input id="goalKg" type="number" inputmode="decimal" step="0.1" placeholder="' + (goal ? n2(goal) : 'goal kg') + '"><button class="btn small" data-act="setGoalKg">SET</button></div></div>' +
+      '<div class="box"><h2>' + SP.icon('camera', 2) + ' PROGRESS PHOTOS</h2>' +
+      '<div class="muted" style="margin-bottom:8px">Same spot, same light, once a week works best.</div>' +
+      '<div class="pix" style="font-size:7px;margin-bottom:6px;color:var(--muted)">POSE</div><div class="seg">' + poseChip('front', 'FRONT', 'setPose', ui.pose) + poseChip('side', 'SIDE', 'setPose', ui.pose) + poseChip('back', 'BACK', 'setPose', ui.pose) + '</div>' +
+      '<div class="gap"><button class="btn block blue" data-act="progressPhoto">TAKE ' + ui.pose.toUpperCase() + ' PHOTO</button></div>' +
+      (prog.length ? '<div class="seg gap tight">' + poseChip('all', 'ALL', 'setPoseView', ui.poseView) + poseChip('front', 'FRONT', 'setPoseView', ui.poseView) + poseChip('side', 'SIDE', 'setPoseView', ui.poseView) + poseChip('back', 'BACK', 'setPoseView', ui.poseView) + '</div>' +
+        '<div class="photo-grid gap">' + shown.map((p) => '<button data-act="viewPhoto" data-id="' + p.id + '"><img alt="" src="' + FW.store.urlFor(p) + '"><span>' + new Date(p.ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + (p.meta.kg ? ' · ' + n2(p.meta.kg) + 'kg' : '') + '</span></button>').join('') + '</div>' +
+        (prog.length > 1 ? '<div class="gap"><button class="btn block ghost" data-act="openCompare">BEFORE / AFTER</button></div>' : '') : '') + '</div>' +
+      (e.length ? '<div class="box flat"><h2>WEIGH-IN LOG</h2><div class="stack">' + e.slice().reverse().slice(0, 10).map((x) => '<div class="wt-row"><div class="nm">' + n2(x.kg) + 'kg <small>' + fmtDate(x.ts) + (x.waist ? ' · waist ' + n2(x.waist) : '') + '</small></div><button class="qty-del" data-act="delWeigh" data-id="' + x.id + '">X</button></div>').join('') + '</div></div>' : '');
+  }
+
+  function compareHtml() {
+    const c = ui.compare;
+    const list = progressPhotos().filter((p) => p.meta.pose === c.pose).sort((a, b) => a.ts - b.ts);
+    const label = (p) => new Date(p.ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: '2-digit' }) + (p.meta.kg ? ' · ' + n2(p.meta.kg) + 'kg' : '');
+    const A = list.find((p) => p.id === c.a), B = list.find((p) => p.id === c.b);
+    const opt = (sel) => list.map((p) => '<option value="' + p.id + '"' + (p.id === sel ? ' selected' : '') + '>' + esc(label(p)) + '</option>').join('');
+    const delta = A && B && A.meta.kg && B.meta.kg ? sign(B.meta.kg - A.meta.kg) + 'kg' : '';
+    return '<div class="modal"><div class="modal-in"><h2>BEFORE / AFTER</h2>' +
+      '<div class="seg" style="margin-bottom:10px">' + ['front', 'side', 'back'].map((k) => '<button class="chip ' + (c.pose === k ? 'on' : '') + '" data-act="cmpPose" data-p="' + k + '">' + k.toUpperCase() + '</button>').join('') + '</div>' +
+      (list.length < 2 ? '<div class="box flat center muted">Take at least two ' + c.pose + ' photos to compare.</div>' :
+        '<div class="cmp"><div><div class="pix" style="font-size:8px;margin-bottom:6px">BEFORE</div><img data-photo="' + (A ? A.id : '') + '" alt="Before"><select data-bind="cmpA">' + opt(c.a) + '</select></div>' +
+        '<div><div class="pix" style="font-size:8px;margin-bottom:6px">AFTER</div><img data-photo="' + (B ? B.id : '') + '" alt="After"><select data-bind="cmpB">' + opt(c.b) + '</select></div></div>' +
+        (delta ? '<div class="center pix" style="font-size:12px;color:var(--yellow);margin:12px 0">' + delta + '</div>' : '')) +
+      '<div class="gap"><button class="btn block" data-act="closeCompare">DONE</button></div></div></div>';
+  }
+
+  function lockHtml() {
+    const c = S.commit;
+    const st = lockStatus(Date.now());
+    const latest = S.sessions.filter((x) => sameDay(x.endedAt, Date.now())).pop();
+    return '<div class="modal"><div class="modal-in"><h2>' + SP.icon('lock', 2) + ' PHONE LOCK</h2>' +
+      '<div class="box flat"><div class="muted">A web app cannot lock your phone, so this works as a commitment contract. Your partner holds the Screen Time passcode, the app tracks the schedule, and you send proof when you have trained.</div></div>' +
+      (st ? '<div class="box lockcard ' + st.state + '"><span class="grow"><span class="pix" style="font-size:11px">' + st.title + '</span><br>' + esc(st.msg) + '</span></div>' : '') +
+      '<button class="toggle ' + (c.on ? 'on' : '') + '" data-act="lockToggle"><span class="nm">Commitment lock</span><span class="sw">' + (c.on ? 'ON' : 'OFF') + '</span></button>' +
+      '<div class="box gap"><div class="pix" style="font-size:9px;margin-bottom:8px">TRAINING DAYS</div><div class="seg tight">' + [1, 2, 3, 4, 5, 6, 0].map((d) => '<button class="chip ' + (c.days.includes(d) ? 'on' : '') + '" data-act="lockDay" data-d="' + d + '">' + DAYS[d] + '</button>').join('') + '</div>' +
+      '<div class="pix" style="font-size:9px;margin:14px 0 8px">LOCKS AT</div><input type="time" data-bind="deadline" value="' + esc(c.deadline) + '" style="width:100%;background:#000;border:3px solid var(--line);color:var(--yellow);padding:8px;font-size:22px;font-family:inherit"></div>' +
+      '<div class="box"><div class="pix" style="font-size:9px;margin-bottom:8px">ACCOUNTABILITY PARTNER</div><input type="text" maxlength="24" placeholder="Name" data-bind="partnerName" value="' + esc(c.partnerName) + '"><div class="spacer"></div><input type="text" inputmode="tel" maxlength="20" placeholder="Mobile number" data-bind="partnerPhone" value="' + esc(c.partnerPhone) + '">' +
+      '<div class="stack gap"><button class="btn block blue" data-act="testProof">SEND TEST MESSAGE</button>' + (latest ? '<button class="btn block" data-act="sendProofLatest">SEND TODAY\'S PROOF</button>' : '') + '</div></div>' +
+      '<div class="box flat"><h2>SET UP ON IPHONE</h2><ul class="rules">' +
+      '<li>Settings → Screen Time → turn on, then <b>Use Screen Time Passcode</b>. Your partner types the passcode, not you.</li>' +
+      '<li>Screen Time → <b>Downtime</b> → Customise Days. Pick your training days, start at the lock time above, end in the morning.</li>' +
+      '<li>Screen Time → <b>Always Allowed</b>: Phone and Messages. Add Round One if it appears in the list (home screen web apps do not always show up, so test it).</li>' +
+      '<li>Trained? Tap <b>Send proof</b> after your workout. Your partner releases Downtime with the passcode.</li>' +
+      '<li>Set the recovery Apple ID to your partner\'s so you cannot reset the code yourself.</li></ul></div>' +
+      '<button class="btn block" data-act="closeLock">DONE</button></div></div>';
   }
 
   // ---------- ONBOARDING ----------
@@ -514,9 +662,11 @@
       '<div class="box"><div class="pix" style="font-size:9px;margin-bottom:8px">PLAYER NAME</div><input type="text" maxlength="10" data-bind="onbName" value="' + esc(o.name) + '"></div>' +
       '<div class="box"><div class="pix" style="font-size:9px;margin-bottom:8px">FIGHTS PER WEEK</div><div class="seg">' + [2, 3, 4, 5].map((d) => '<button class="chip ' + (o.days === d ? 'on' : '') + '" data-act="onbDays" data-d="' + d + '">' + d + '</button>').join('') + '</div></div>' +
       '<div class="box"><div class="pix" style="font-size:9px;margin-bottom:8px">DO YOU HAVE A BARBELL?</div><div class="seg"><button class="chip ' + (o.barbell ? 'on' : '') + '" data-act="onbBar" data-v="1">YES</button><button class="chip ' + (!o.barbell ? 'on' : '') + '" data-act="onbBar" data-v="0">NO</button></div>' +
-      (o.barbell ? '<div class="pix" style="font-size:9px;margin:12px 0 8px">BAR WEIGHT (KG)</div><div class="seg">' + [10, 15, 20].map((w) => '<button class="chip ' + (o.bar === w ? 'on' : '') + '" data-act="onbBarW" data-w="' + w + '">' + w + '</button>').join('') + '</div>' : '') + '</div>' +
+      (o.barbell ? '<div class="pix" style="font-size:9px;margin:12px 0 8px">BAR WEIGHT (KG)</div><div class="seg">' + [10, 15, 20, 25].map((w) => '<button class="chip ' + (o.bar === w ? 'on' : '') + '" data-act="onbBarW" data-w="' + w + '">' + w + '</button>').join('') + '</div>' : '') + '</div>' +
       '<div class="box"><div class="pix" style="font-size:9px;margin-bottom:8px">BEEN AWAY FROM TRAINING?</div><div class="seg"><button class="chip ' + (o.ramp ? 'on' : '') + '" data-act="onbRamp" data-v="1">EASE ME IN</button><button class="chip ' + (!o.ramp ? 'on' : '') + '" data-act="onbRamp" data-v="0">FULL SEND</button></div>' +
       '<div class="muted gap">Ease-in: fewer sets for your first 6 workouts while you rebuild the habit.</div></div>' +
+      '<div class="box"><div class="pix" style="font-size:9px;margin-bottom:8px">KNEE-FRIENDLY MODE</div><div class="seg"><button class="chip ' + (o.knee ? 'on' : '') + '" data-act="onbKnee" data-v="1">ON</button><button class="chip ' + (!o.knee ? 'on' : '') + '" data-act="onbKnee" data-v="0">OFF</button></div><div class="muted gap">Swaps lunges and split squats for hip-dominant moves and box squats. Stop any move that hurts. If knee pain persists, see a physio.</div></div>' +
+      '<div class="box"><div class="pix" style="font-size:9px;margin-bottom:8px">BODY WEIGHT (OPTIONAL)</div><div class="row"><input id="onbKg" type="number" inputmode="decimal" step="0.1" placeholder="current kg" data-bind="onbKg" value="' + esc(o.kg) + '"><input id="onbGoal" type="number" inputmode="decimal" step="0.1" placeholder="goal kg" data-bind="onbGoal" value="' + esc(o.goal) + '"></div></div>' +
       '<div class="box flat"><div class="pix" style="font-size:9px;margin-bottom:8px">GEAR LOADED</div><div class="muted">Bench · Squat rack · Plates 5/10/15/20/25kg (pairs) · Kettlebells 8kg × 2 · Dumbbells 5kg × 2. Add more any time on the GEAR tab.</div></div>' +
       '<button class="btn block red" data-act="onbGo">ENTER THE ARENA</button>';
   }
@@ -525,6 +675,8 @@
   function modalHtml() {
     if (ui.ko) return koHtml();
     if (ui.viewer) return viewerHtml();
+    if (ui.compare) return compareHtml();
+    if (ui.lock) return lockHtml();
     if (ui.settings) return settingsHtml();
     return '';
   }
@@ -537,6 +689,7 @@
       '<div class="sum"><div><b>' + s.sets + '</b><span>SETS</span></div><div><b>' + n2(Math.round(s.vol / 100) / 10) + 't</b><span>VOLUME</span></div><div><b>+' + s.xp + '</b><span>XP</span></div></div>' +
       (k.prCount ? '<div class="lvlup" style="color:var(--cyan)">' + k.prCount + ' NEW RECORD' + (k.prCount > 1 ? 'S' : '') + '!</div>' : '') +
       '<div class="box flat"><h2>NEXT TIME</h2><div class="next-list">' + k.notes.map((n) => '<div><span>' + esc(n.name) + '</span><span>' + esc(n.note) + '</span></div>').join('') + '</div></div>' +
+      (S.commit.on ? '<button class="btn block blue" data-act="sendProofKo">SEND PROOF TO ' + esc((S.commit.partnerName || 'PARTNER').toUpperCase()) + '</button><div class="spacer"></div>' : '') +
       '<button class="btn block" data-act="koClose">CONTINUE</button></div></div>';
   }
 
@@ -551,7 +704,8 @@
     const tg = (k, label) => '<button class="toggle ' + (st[k] ? 'on' : '') + '" data-act="setting" data-k="' + k + '"><span class="nm">' + label + '</span><span class="sw">' + (st[k] ? 'ON' : 'OFF') + '</span></button>';
     return '<div class="modal"><div class="modal-in"><h2>SETTINGS</h2>' +
       '<div class="box"><div class="pix" style="font-size:9px;margin-bottom:8px">PLAYER NAME</div><input type="text" maxlength="10" data-bind="name" value="' + esc(S.profile.name) + '"></div>' +
-      '<div class="box"><div class="stack">' + tg('sound', 'Sound effects') + tg('autoRest', 'Auto rest timer') + tg('ramp', 'Ease-in (first 6 workouts)') + '</div></div>' +
+      '<div class="box"><div class="stack">' + tg('sound', 'Sound effects') + tg('autoRest', 'Auto rest timer') + tg('ramp', 'Ease-in (first 6 workouts)') + tg('knee', 'Knee-friendly mode') + '</div></div>' +
+      '<div class="box"><button class="btn block blue" data-act="openLock">PHONE LOCK SETUP</button></div>' +
       '<div class="box"><h2>BACKUP</h2><div class="muted" style="margin-bottom:10px">Everything lives on this device. Export a backup now and then (photos included).</div>' +
       '<div class="stack"><button class="btn block blue" data-act="exportData">EXPORT BACKUP</button><button class="btn block ghost" data-act="importData">IMPORT BACKUP</button><button class="btn block red" data-act="resetAll">ERASE EVERYTHING</button></div></div>' +
       '<div class="center muted" style="margin-bottom:14px">ROUND ONE v1.0<br>FOOD TRACKING ARRIVES IN V2</div>' +
@@ -570,14 +724,15 @@
     let html;
     if (ui.view === 'onboard') html = onboardHtml();
     else if (ui.view === 'workout') html = workoutHtml();
-    else html = ({ home: homeHtml, plan: planHtml, gear: gearHtml, log: logHtml, food: foodHtml })[ui.tab]();
+    else html = ({ home: homeHtml, plan: planHtml, gear: gearHtml, body: bodyHtml, log: logHtml, food: foodHtml })[ui.tab]();
     $('#screen').innerHTML = html;
     $('#modal').innerHTML = modalHtml();
-    document.body.style.overflow = ui.ko || ui.viewer || ui.settings ? 'hidden' : '';
+    document.body.style.overflow = ui.ko || ui.viewer || ui.settings || ui.compare || ui.lock ? 'hidden' : '';
     renderDock();
     if (keepScroll) window.scrollTo(0, y);
     hydratePhotos();
-    if (ui.view === 'tabs' && ui.tab === 'log' && ui.logTab === 'chart') drawChart();
+    if (ui.view === 'tabs' && ui.tab === 'log' && ui.logTab === 'chart') drawChart('chart', chartPoints(ui.chartEx), null);
+    if (ui.view === 'tabs' && ui.tab === 'body') drawChart('wchart', weighIns().map((x) => ({ t: x.ts, v: x.kg })), S.body.goalKg);
   }
 
   async function hydratePhotos() {
@@ -617,7 +772,7 @@
   }
 
   const ACT = {
-    tab(el) { ui.tab = el.dataset.tab; ui.view = 'tabs'; FW.sfx('tap'); if (ui.tab === 'log' && ui.logTab === 'photos') loadPhotos(); render(); window.scrollTo(0, 0); },
+    tab(el) { ui.tab = el.dataset.tab; ui.view = 'tabs'; FW.sfx('tap'); if ((ui.tab === 'log' && ui.logTab === 'photos') || ui.tab === 'body') loadPhotos(); render(); window.scrollTo(0, 0); },
     start(el) { startWorkout(el.dataset.key); },
     resume() { ui.view = 'workout'; keepAwake(); render(); window.scrollTo(0, 0); },
     finish() { finishWorkout(); },
@@ -677,7 +832,7 @@
     feel(el) { S.active.exercises[+el.dataset.ei].feel = el.dataset.f; FW.sfx('tap'); save(); render(true); },
     swap(el) {
       const ei = +el.dataset.ei, e = S.active.exercises[ei];
-      const opts = FW.slotOptions(e.slotKey, caps);
+      const opts = FW.slotOptions(e.slotKey, caps, S.settings.knee);
       const nxt = opts[(opts.indexOf(e.exId) + 1) % opts.length];
       S.active.exercises[ei] = makeExercise(e.slotKey, nxt);
       FW.sfx('tap'); save(); render(true);
@@ -743,6 +898,51 @@
         render();
       });
     },
+
+    saveWeigh() {
+      const kg = parseFloat($('#wkg').value);
+      if (!(kg > 20 && kg < 400)) { toast('ENTER YOUR WEIGHT IN KG'); return; }
+      const waist = parseFloat($('#wwaist').value);
+      const d = $('#wdate').value;
+      const ts = d ? new Date(d + 'T12:00:00').getTime() : Date.now();
+      S.body.entries = S.body.entries.filter((x) => !sameDay(x.ts, ts)); // one weigh-in per day: re-weighing replaces
+      S.body.entries.push({ id: uid(), ts, kg: Math.round(kg * 10) / 10, waist: waist > 0 ? waist : undefined });
+      FW.sfx('coin'); save(); toast('WEIGH-IN SAVED', 'good', 1600); render(true);
+    },
+    delWeigh(el) { S.body.entries = S.body.entries.filter((x) => x.id !== el.dataset.id); save(); render(true); },
+    setGoalKg() {
+      const g = parseFloat($('#goalKg').value);
+      if (!(g > 20 && g < 400)) { toast('ENTER A GOAL WEIGHT IN KG'); return; }
+      S.body.goalKg = g; save(); toast('GOAL SET', 'good', 1400); render(true);
+    },
+    progressPhoto() { $('#progressInput').value = ''; $('#progressInput').click(); },
+    setPose(el) { ui.pose = el.dataset.p; render(true); },
+    setPoseView(el) { ui.poseView = el.dataset.p; render(true); },
+    openCompare() {
+      const pose = ui.pose;
+      const list = progressPhotos().filter((p) => p.meta.pose === pose).sort((a, b) => a.ts - b.ts);
+      ui.compare = { pose, a: list.length ? list[0].id : '', b: list.length ? list[list.length - 1].id : '' };
+      render(true);
+    },
+    cmpPose(el) {
+      const list = progressPhotos().filter((p) => p.meta.pose === el.dataset.p).sort((a, b) => a.ts - b.ts);
+      ui.compare = { pose: el.dataset.p, a: list.length ? list[0].id : '', b: list.length ? list[list.length - 1].id : '' };
+      render(true);
+    },
+    closeCompare() { ui.compare = null; render(true); },
+    openLock() { ui.settings = false; ui.lock = true; render(true); },
+    closeLock() { ui.lock = false; render(true); },
+    lockToggle() { S.commit.on = !S.commit.on; save(); render(true); },
+    lockDay(el) {
+      const d = +el.dataset.d, days = S.commit.days;
+      S.commit.days = days.includes(d) ? days.filter((x) => x !== d) : days.concat(d);
+      save(); render(true);
+    },
+    testProof() { sendMessage('ROUND ONE test message. If you got this, my accountability setup works.'); },
+    sendProofLatest() { const l = S.sessions.filter((x) => sameDay(x.endedAt, Date.now())).pop(); if (l) sendMessage(proofMessage(l)); },
+    sendProofKo() { if (ui.ko) sendMessage(proofMessage(ui.ko.session)); },
+    dismissInstall() { S.dismissInstall = true; save(); render(true); },
+    onbKnee(el) { ui.onb.knee = el.dataset.v === '1'; render(true); },
     onbNext() { ui.onbStep = 1; FW.sfx('coin'); render(); window.scrollTo(0, 0); },
     onbDays(el) { ui.onb.days = +el.dataset.d; FW.sfx('tap'); render(true); },
     onbBar(el) { ui.onb.barbell = el.dataset.v === '1'; render(true); },
@@ -753,6 +953,10 @@
       S.profile.name = (o.name || 'PLAYER 1').toUpperCase().slice(0, 10);
       S.profile.goalDays = o.days;
       S.settings.ramp = o.ramp;
+      S.settings.knee = o.knee;
+      const kg0 = parseFloat(o.kg), goal0 = parseFloat(o.goal);
+      if (kg0 > 0) S.body.entries.push({ id: uid(), ts: Date.now(), kg: kg0 });
+      if (goal0 > 0) S.body.goalKg = goal0;
       S.gear.barbell = { has: o.barbell, weight: o.bar };
       S.onboarded = true;
       recaps();
@@ -781,6 +985,13 @@
       save(); render(true);
     },
     chartEx(el) { ui.chartEx = el.value; render(true); },
+    deadline(el) { if (el.value) { S.commit.deadline = el.value; save(); } },
+    partnerName(el) { S.commit.partnerName = el.value.slice(0, 24); save(); },
+    partnerPhone(el) { S.commit.partnerPhone = el.value.slice(0, 20); save(); },
+    cmpA(el) { ui.compare.a = el.value; render(true); },
+    cmpB(el) { ui.compare.b = el.value; render(true); },
+    onbKg(el) { ui.onb.kg = el.value; },
+    onbGoal(el) { ui.onb.goal = el.value; },
   };
 
   document.addEventListener('click', (e) => {
@@ -815,6 +1026,21 @@
     } catch (err) {
       toast('COULD NOT SAVE PHOTO');
     }
+  });
+
+  $('#progressInput').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    toast('SAVING PHOTO…', '', 1500);
+    try {
+      const blob = await FW.store.compress(file, 1400, 0.78);
+      const st = weightStats();
+      const rec = { id: uid(), ts: Date.now(), blob, meta: { kind: 'progress', pose: ui.pose, kg: st ? st.last.kg : null, exName: 'Progress ' + ui.pose } };
+      await FW.store.photos.put(rec);
+      await loadPhotos();
+      FW.sfx('set');
+      toast('PROGRESS PHOTO SAVED', 'good', 1800);
+    } catch (err) { toast('COULD NOT SAVE PHOTO'); }
   });
 
   // backup
@@ -856,6 +1082,7 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ui.view === 'workout') keepAwake(); });
   setInterval(tick, 250);
 
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
   if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
     navigator.serviceWorker.register('sw.js').catch(() => { /* offline support is optional */ });
   }

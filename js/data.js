@@ -14,15 +14,18 @@
 
   const E = {
     // ---- squat pattern ----
-    back_squat: { name: 'Back Squat', load: 'barbell', needs: ['barbell', 'rack'], sets: 3, reps: [5, 8], rest: 150, start: 20,
+    back_squat: { name: 'Back Squat', load: 'barbell', needs: ['barbell', 'rack'], sets: 3, reps: [6, 10], rest: 120, start: 20, knee: 1,
       cue: 'Bar across upper back, chest tall. Sit down between the hips, knees over toes, drive the floor away. Set the rack safety pins just below your bottom position.' },
-    goblet_squat: { name: 'Goblet Squat', load: 'hand', needs: ['hand'], sets: 3, reps: [8, 12], rest: 90, start: 'max',
+    goblet_squat: { name: 'Goblet Squat', load: 'hand', needs: ['hand'], sets: 3, reps: [8, 12], rest: 90, start: 'max', knee: 1,
       cue: 'Hold the weight tight to your chest. Elbows inside the knees at the bottom, stay tall.' },
-    bw_squat: { name: 'Bodyweight Squat', load: 'bodyweight', needs: [], sets: 3, reps: [12, 20], rest: 60,
+    bw_squat: { name: 'Bodyweight Squat', load: 'bodyweight', needs: [], sets: 3, reps: [12, 20], rest: 60, knee: 1,
       cue: 'Feet shoulder width, sit back and down, drive up. Slow on the way down.' },
 
+    box_squat: { name: 'Box Squat', load: 'barbell', needs: ['barbell', 'rack', 'bench'], sets: 3, reps: [6, 10], rest: 120, start: 20, knee: 0,
+      cue: 'Set the bench behind you (stack a mat or plate on it if you need it higher). Sit back to the bench under control, touch it lightly, then drive up. Only go as deep as feels pain-free for your knees.' },
+
     // ---- horizontal push ----
-    bench_press: { name: 'Bench Press', load: 'barbell', needs: ['barbell', 'bench', 'rack'], sets: 3, reps: [6, 10], rest: 120, start: 20,
+    bench_press: { name: 'Bench Press', load: 'barbell', needs: ['barbell', 'bench', 'rack'], sets: 3, reps: [8, 12], rest: 90, start: 20,
       cue: 'Shoulder blades pinched, feet planted. Lower to mid chest, press up and slightly back. Use the safety pins if you train alone.' },
     db_bench: { name: 'Dumbbell Bench Press', load: 'hand', needs: ['bench', 'hand2'], sets: 3, reps: [8, 12], rest: 90, start: 'min',
       cue: 'Weights over the chest, lower with control until elbows are just below the bench, press up.' },
@@ -38,7 +41,7 @@
       cue: 'Lie face down, lift arms and legs, squeeze the glutes and upper back for a second at the top.' },
 
     // ---- hinge ----
-    deadlift: { name: 'Deadlift', load: 'barbell', needs: ['barbell'], sets: 3, reps: [5, 8], rest: 150, start: 40,
+    deadlift: { name: 'Deadlift', load: 'barbell', needs: ['barbell'], sets: 3, reps: [6, 10], rest: 120, start: 40,
       cue: 'Bar over mid-foot, shoulders just in front of it. Brace, push the floor away, lock out with the glutes. Keep the bar dragging up your legs.' },
     rdl: { name: 'Romanian Deadlift', load: 'barbell', needs: ['barbell'], sets: 3, reps: [8, 12], rest: 120, start: 30,
       cue: 'Soft knees, hips back, bar slides down the thighs until you feel the hamstrings stretch. Stand tall.' },
@@ -54,15 +57,20 @@
       cue: 'Feet flat, drive hips up, squeeze for a second at the top.' },
 
     // ---- single leg ----
-    split_squat: { name: 'Bulgarian Split Squat', load: 'hand', needs: ['bench', 'hand2'], sets: 3, reps: [8, 12], rest: 90, start: 'max', perSide: true,
+    split_squat: { name: 'Bulgarian Split Squat', load: 'hand', needs: ['bench', 'hand2'], sets: 3, reps: [8, 12], rest: 90, start: 'max', perSide: true, knee: 2,
       cue: 'Rear foot on the bench, weight in each hand. Drop the back knee straight down. Reps are per leg.' },
-    reverse_lunge: { name: 'Reverse Lunge', load: 'hand', needs: ['hand2'], sets: 3, reps: [8, 12], rest: 90, start: 'max', perSide: true,
+    reverse_lunge: { name: 'Reverse Lunge', load: 'hand', needs: ['hand2'], sets: 3, reps: [8, 12], rest: 90, start: 'max', perSide: true, knee: 1,
       cue: 'Step back, lower the back knee to just above the floor, drive through the front heel. Reps are per leg.' },
-    bw_lunge: { name: 'Bodyweight Lunge', load: 'bodyweight', needs: [], sets: 3, reps: [10, 16], rest: 60, perSide: true,
+    bw_lunge: { name: 'Bodyweight Lunge', load: 'bodyweight', needs: [], sets: 3, reps: [10, 16], rest: 60, perSide: true, knee: 1,
       cue: 'Long step, torso upright, back knee kisses the floor. Reps are per leg.' },
 
+    sl_rdl: { name: 'Single-Leg RDL', load: 'hand', needs: ['hand'], sets: 3, reps: [8, 12], rest: 90, start: 'min', perSide: true, knee: 0,
+      cue: 'Weight in one hand, slight bend in the standing knee. Hinge forward letting the free leg float back, then stand tall. Touch a wall for balance if needed. Reps are per leg.' },
+    sl_bridge: { name: 'Single-Leg Glute Bridge', load: 'bodyweight', needs: [], sets: 3, reps: [8, 15], rest: 60, perSide: true, knee: 0,
+      cue: 'One foot on the floor, the other leg straight. Drive the hips up, squeeze, lower slowly. Reps are per leg.' },
+
     // ---- vertical push ----
-    ohp: { name: 'Overhead Press', load: 'barbell', needs: ['barbell'], sets: 3, reps: [6, 10], rest: 120, start: 20,
+    ohp: { name: 'Overhead Press', load: 'barbell', needs: ['barbell'], sets: 3, reps: [8, 12], rest: 90, start: 20,
       cue: 'Bar on the front of the shoulders, squeeze glutes and abs, press straight up and move your head through at the top.' },
     db_press: { name: 'Dumbbell Shoulder Press', load: 'hand', needs: ['hand2'], sets: 3, reps: [8, 12], rest: 90, start: 'min',
       cue: 'Weights at shoulder height, press up and slightly together, lower under control.' },
@@ -93,6 +101,9 @@
     close_pushup: { name: 'Close-Grip Push-up', load: 'bodyweight', needs: [], sets: 2, reps: [6, 15], rest: 60,
       cue: 'Hands under the chest, elbows brush your sides as you lower.' },
 
+    mountain_climber: { name: 'Slow Mountain Climber', load: 'time', needs: [], sets: 3, reps: [20, 40], rest: 45, knee: 1,
+      cue: 'Hands under shoulders, drive one knee at a time toward the chest. Slow and controlled, no jumping. Log seconds.' },
+
     // ---- core ----
     plank: { name: 'Plank', load: 'time', needs: [], sets: 3, reps: [20, 45], rest: 45,
       cue: 'Forearms down, one straight line from head to heels. Squeeze glutes and abs. Log seconds.' },
@@ -106,7 +117,7 @@
 
   // Ordered by preference: the first option the user has the gear for wins.
   const SLOTS = {
-    squat:       { label: 'SQUAT',        opts: ['back_squat', 'goblet_squat', 'bw_squat'] },
+    squat:       { label: 'SQUAT',        opts: ['back_squat', 'box_squat', 'goblet_squat', 'bw_squat'] },
     hpush:       { label: 'PUSH',         opts: ['bench_press', 'db_bench', 'pushup'] },
     hpull:       { label: 'ROW',          opts: ['barbell_row', 'one_arm_row', 'superman'] },
     hinge_light: { label: 'GLUTES',       opts: ['hip_thrust', 'kb_swing', 'glute_bridge'] },
@@ -114,15 +125,17 @@
     curl:        { label: 'BICEPS',       opts: ['barbell_curl', 'db_curl', 'band_curl'] },
     hinge:       { label: 'HINGE',        opts: ['deadlift', 'rdl', 'db_rdl'] },
     vpush:       { label: 'PRESS',        opts: ['ohp', 'db_press', 'pike_pushup'] },
-    lunge:       { label: 'SINGLE LEG',   opts: ['split_squat', 'reverse_lunge', 'bw_lunge'] },
+    lunge:       { label: 'SINGLE LEG',   opts: ['split_squat', 'reverse_lunge', 'sl_rdl', 'sl_bridge', 'bw_lunge'] },
     vpull:       { label: 'PULL',         opts: ['pullup', 'lat_pulldown', 'band_pulldown', 'db_pullover', 'superman'] },
     triceps:     { label: 'TRICEPS',      opts: ['db_ext', 'bench_dip', 'close_pushup'] },
     core_b:      { label: 'CORE',         opts: ['hanging_knee_raise', 'dead_bug'] },
+    finisher_a:  { label: 'FINISHER',     opts: ['kb_swing', 'mountain_climber'] },
+    finisher_b:  { label: 'FINISHER',     opts: ['mountain_climber', 'kb_swing'] },
   };
 
   const WORKOUTS = {
-    A: { key: 'A', name: 'WORKOUT A', sub: 'SQUAT / PUSH / ROW', slots: ['squat', 'hpush', 'hpull', 'hinge_light', 'core_a', 'curl'], fighter: 0 },
-    B: { key: 'B', name: 'WORKOUT B', sub: 'PULL / HINGE / PRESS', slots: ['hinge', 'vpush', 'lunge', 'vpull', 'triceps', 'core_b'], fighter: 1 },
+    A: { key: 'A', name: 'WORKOUT A', sub: 'SQUAT / PUSH / ROW', slots: ['squat', 'hpush', 'hpull', 'hinge_light', 'curl', 'core_a', 'finisher_a'], fighter: 0 },
+    B: { key: 'B', name: 'WORKOUT B', sub: 'PULL / HINGE / PRESS', slots: ['hinge', 'vpush', 'lunge', 'vpull', 'triceps', 'core_b', 'finisher_b'], fighter: 1 },
   };
 
   // Equipment that is just "have it / don't have it".
@@ -144,7 +157,7 @@
 
   function defaultGear() {
     return {
-      barbell: { has: true, weight: 20 },
+      barbell: { has: true, weight: 25 },
       rack: true, bench: true, pullupbar: false, bands: false, cable: false, dipbars: false, abwheel: false,
       plates: [{ w: 5, n: 2 }, { w: 10, n: 2 }, { w: 15, n: 2 }, { w: 20, n: 2 }, { w: 25, n: 2 }],
       dumbbells: [{ w: 5, n: 2 }],

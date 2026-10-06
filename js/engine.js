@@ -26,7 +26,7 @@
 
   // ---------- barbell loading ----------
   function barbellLoads(g) {
-    const bar = g.barbell && g.barbell.has ? g.barbell.weight || 20 : 0;
+    const bar = g.barbell && g.barbell.has ? g.barbell.weight || 25 : 0;
     let sums = new Set([0]);
     (g.plates || []).forEach((p) => {
       const perSide = Math.floor(p.n / 2);
@@ -41,7 +41,7 @@
 
   /** Plates to put on EACH side for a total bar weight, e.g. [25, 10, 5]. */
   function plateLoadout(g, total) {
-    const bar = g.barbell && g.barbell.weight ? g.barbell.weight : 20;
+    const bar = g.barbell && g.barbell.weight ? g.barbell.weight : 25;
     const target = r2((total - bar) / 2);
     if (target < 0) return null;
     const plates = (g.plates || [])
@@ -111,17 +111,26 @@
     const ex = FW.EXERCISES[exId];
     return !!ex && ex.needs.every((n) => caps.has(n));
   }
-  function slotOptions(slotKey, caps) {
-    return FW.SLOTS[slotKey].opts.filter((id) => available(id, caps));
+  const kneeLevel = (id) => FW.EXERCISES[id].knee || 0;
+  /** Gear-available options for a slot. Knee-friendly mode drops "avoid" moves and puts the gentlest first. */
+  function slotOptions(slotKey, caps, knee) {
+    let o = FW.SLOTS[slotKey].opts.filter((id) => available(id, caps));
+    if (knee) {
+      o = o.filter((id) => kneeLevel(id) < 2)
+        .map((id, i) => ({ id, i }))
+        .sort((a, b) => kneeLevel(a.id) - kneeLevel(b.id) || a.i - b.i)
+        .map((x) => x.id);
+    }
+    return o;
   }
-  function slotChoice(slotKey, caps, pins) {
-    const opts = slotOptions(slotKey, caps);
+  function slotChoice(slotKey, caps, pins, knee) {
+    const opts = slotOptions(slotKey, caps, knee);
     if (pins && pins[slotKey] && opts.includes(pins[slotKey])) return pins[slotKey];
     return opts[0] || null;
   }
-  function buildWorkout(key, caps, pins) {
+  function buildWorkout(key, caps, pins, knee) {
     return FW.WORKOUTS[key].slots
-      .map((slotKey) => ({ slotKey, exId: slotChoice(slotKey, caps, pins) }))
+      .map((slotKey) => ({ slotKey, exId: slotChoice(slotKey, caps, pins, knee) }))
       .filter((s) => s.exId);
   }
   function availableExercises(caps) {
