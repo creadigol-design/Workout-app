@@ -5,13 +5,18 @@
   let ctx = null;
   let enabled = true;
 
-  // iOS: play through the speaker even with the silent switch on (Safari 16.4+).
-  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* unsupported */ }
+  // iOS (Safari 16.4+): "ambient" mixes our beeps with whatever else is playing, so Spotify / Apple Music keep going.
+  // ("playback" would take over the audio session and pause them.) Ambient still obeys the silent switch.
+  function mixWithOthers() {
+    try { if (navigator.audioSession && navigator.audioSession.type !== 'ambient') navigator.audioSession.type = 'ambient'; } catch (e) { /* unsupported */ }
+  }
+  mixWithOthers();
 
   function ac() {
     if (!ctx) {
       const AC = root.AudioContext || root.webkitAudioContext;
       if (!AC) return null;
+      mixWithOthers();
       try { ctx = new AC(); } catch (e) { return null; }
     }
     return ctx;
